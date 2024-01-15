@@ -5,111 +5,67 @@ import (
 	"time"
 )
 
-// Message in TokenRing
-type Message struct {
+type Token struct {
 	Data      string
 	Recipient int
 	TTL       int
 }
 
-// Nodering is a node in the ring token
-type Nodering struct {
-	id     int
-	input  chan Message
-	output chan Message
-}
-
-// TokenRing network
-type networkTokenring struct {
-	Nodes []*Nodering
-}
-
-// Initializes n nodes in the token ring
-func initialize(N int) *networkTokenring {
-	network := &networkTokenring{}
-	network.Nodes = make([]*Nodering, N)
-
-	// Initialize nodes, run goroutines
-	for i := 0; i < N; i++ {
-		network.Nodes[i] = &Nodering{
-			id:     i,
-			input:  make(chan Message),
-			output: make(chan Message),
-		}
-		go network.runNode(network.Nodes[i])
-	}
-	for i := 0; i < N; i++ {
-		network.Nodes[i].connect(network.Nodes[(i+1)%N], network.Nodes[(i-1+N)%N])
-	}
-
-	return network
-}
-
-// Connects nodes (input output)
-func (n *Nodering) connect(next, prev *Nodering) {
-	go func() {
-		for message := range n.input {
-			// Send message to the next node
-			next.output <- message
-		}
-	}()
-
-	go func() {
-		for message := range prev.output {
-			// Receive message from the previous node
-			n.input <- message
-		}
-	}()
-}
-
-// Node runs in the token network
-func (network *networkTokenring) runNode(node *Nodering) {
-	for message := range node.input {
-		fmt.Printf("Remaining TTL for node %d: %d\n", node.id, message.TTL)
-
-		// Decrease TTL
-		message.TTL--
-
-		// Check if TTL is still positive
-		if message.TTL > 0 {
-			// Resend the message
-			node.output <- message
-		}
-	}
-}
-
-// Sends a message to all nodes in the network token ring
-func (network *networkTokenring) SendMessageToAllNodes(data string, ttl int) {
-	message := Message{
-		Data: data,
-		TTL:  ttl,
-	}
-	// Send message to the first node
-	network.Nodes[0].input <- message
-}
-
 func main() {
-	var N, ttl int
-	var messageData string
-
-	// Input number of nodes N
-	fmt.Print("Enter the number of nodes: ")
+	var N, ttl, recipient int
+	fmt.Print("Введите число узлов: ")
 	fmt.Scan(&N)
 
-	// Initialize N nodes
-	network := initialize(N)
+	channels := make([]chan Token, N)
+	for i := range channels {
+		channels[i] = make(chan Token)
+	}
 
-	// Input TTL
-	fmt.Print("Enter TTL (time to live): ")
+	fmt.Print("Введите время жизни токена: ")
 	fmt.Scan(&ttl)
 
-	// Input message
-	fmt.Print("Enter the message: ")
-	fmt.Scan(&messageData)
+	for i := 0; i < N; i++ {
+		go node(i, channels[i], channels[(i+1)%N])
+	}
 
-	// Send message to all nodes
-	network.SendMessageToAllNodes(messageData, ttl)
+	for {
+		fmt.Print("Введите адресата сообщения (c 0 по ", N-1, "): ")
+		fmt.Scan(&recipient)
 
-	// Time delay for message send
-	time.Sleep(5 * time.Second)
+		if recipient < 0 || recipient >= N {
+			fmt.Println("Адресат сообщения не попадает в доступный интервал. Пожалуйста, введите корректное значение.")
+		} else {
+			break
+		}
+	}
+
+	var message string
+	fmt.Print("Введите сообщение: ")
+	fmt.Scan(&message)
+
+	channels[0] <- Token{Data: message, Recipient: recipient, TTL: ttl}
+
+	time.Sleep(time.Second)
+
+	fmt.Println("Программа завершена")
+}
+
+func node(id int, in chan Token, out chan Token) {
+	for {
+		token := <-in
+		//fmt.Printf("Узел %d получил токен, %v\n", id, token)
+		fmt.Printf("Узел %d получил токен, id: %d. Остаток времени жизни: %d\n", id, token.Recipient, token.TTL)
+
+		if token.Recipient == id {
+			fmt.Printf("Ура! Узел %d достиг адресата и доставил сообщение: %s\n", id, token.Data)
+			return
+		} else if token.TTL > 0 {
+			token.TTL--
+			out <- token
+			time.Sleep(100)
+		} else {
+			fmt.Printf("Эх :( На узле %d истекло время жизни токена\n", id)
+			return
+		}
+	}
 }

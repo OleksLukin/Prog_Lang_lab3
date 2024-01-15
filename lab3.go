@@ -53,7 +53,6 @@ func main() {
 func node(id int, in chan Token, out chan Token) {
 	for {
 		token := <-in
-		//fmt.Printf("Узел %d получил токен, %v\n", id, token)
 		fmt.Printf("Узел %d получил токен, id: %d. Остаток времени жизни: %d\n", id, token.Recipient, token.TTL)
 
 		if token.Recipient == id {
